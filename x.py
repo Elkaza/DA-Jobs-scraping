@@ -1,48 +1,62 @@
 import requests
 from bs4 import BeautifulSoup
+import csv
 
-# Define the URL to scrape
+# List of frameworks and methods to search for
+frameworks_methods = ["TOGAF", "ArchiMate", "Zachman Framework", "DoDAF", "FEAF", "COBIT", "ITIL", "IT4IT",
+                      "ISO/IEC 27001", "ISO/IEC 38500", "CMMI", "PMBOK Guide", "Prince2", "Agile", "SAFe",
+                      "Lean IT", "Balanced Scorecard", "Value Stream Mapping", "Six Sigma", "ISO 9001", "BPMN",
+                      "Scrum", "Kanban", "DevOps", "ISO/IEC 20000"]
+
+# URL to scrape from
 url = 'https://www.karriere.at/jobs/wien?jobFields%5B%5D=2172'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
 
-# Fetch the page content
-page = requests.get(url)
-soup = BeautifulSoup(page.content, 'html.parser')
+# Debug print
+print("URL Loaded:", response.status_code)  # Check if the URL is loaded correctly
+print("Soup Title:", soup.title.string)  # See what the title tag of the soup is
 
-# Find all job listings - Adjust the class name according to actual HTML structure
-jobs = soup.find_all('div', class_='m-jobsListItem')
+# Example selectors, adjust as needed
+job_cards = soup.find_all('div', class_='job-card-selector')  # Adjust the class name based on actual HTML
 
-# List to store job data
-job_list = []
+# Debug print
+print("Number of Job Cards Found:", len(job_cards))
 
-for job in jobs:
-    # Extract job title
-    title_tag = job.find('h2', class_='m-jobsListItem__title')
-    title = title_tag.get_text(strip=True) if title_tag else 'No title found'
+results = []
 
-    # Extract job link
-    link = title_tag.find('a')['href'] if title_tag and title_tag.find('a') else 'No link found'
+for card in job_cards:
+    job_title = card.find('h2').text.strip() if card.find('h2') else 'No Title Found'
+    company_name = card.find('div', class_='company-name-selector').text.strip() if card.find('div', class_='company-name-selector') else 'No Company Found'
+    job_link = card.find('a', href=True)['href'] if card.find('a', href=True) else 'No Link Found'
 
-    # Extract company name
-    company_tag = job.find('div', class_='m-jobsListItem__company')
-    company_name = company_tag.get_text(strip=True) if company_tag else 'No company name found'
+    # Debug print
+    print("Job Title:", job_title)
+    print("Company Name:", company_name)
+    print("Job Link:", job_link)
 
-    # Extract location
-    location_tag = job.find('span', class_='m-jobsListItem__location')
-    location = location_tag.get_text(strip=True) if location_tag else 'No location found'
+    # Follow link to job description page
+    job_response = requests.get(job_link)
+    job_soup = BeautifulSoup(job_response.text, 'html.parser')
+    job_description = job_soup.find('div', class_='job-description-selector').text if job_soup.find('div', class_='job-description-selector') else ''
 
-    # Store job info in a dictionary and add to the list
-    job_info = {
-        'title': title,
-        'link': link,
-        'company': company_name,
-        'location': location
-    }
-    job_list.append(job_info)
+    # Debug print
+    print("Job Description Length:", len(job_description))
 
-# Print all job information
-for job in job_list:
-    print(f"Title: {job['title']}")
-    print(f"Link: {job['link']}")
-    print(f"Company: {job['company']}")
-    print(f"Location: {job['location']}")
-    print('-' * 80)  # Separator for readability
+    # Check for frameworks/methods in the description
+    found_frameworks = [fm for fm in frameworks_methods if fm.lower() in job_description.lower()]
+
+    if found_frameworks:
+        results.append({
+            'Job Title': job_title,
+            'Company Name': company_name,
+            'Found Frameworks/Methods': ', '.join(found_frameworks)
+        })
+
+# Write results to a CSV file
+with open('jobs_with_frameworks.csv', 'w', newline='', encoding='utf-8') as file:
+    writer = csv.DictWriter(file, fieldnames=['Job Title', 'Company Name', 'Found Frameworks/Methods'])
+    writer.writeheader()
+    writer.writerows(results)
+
+print("CSV file has been created. Total Entries:", len(results))
